@@ -59,8 +59,21 @@ type Company = {
 
 export default function Dashboard() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState("titles");
   const [activeState, setActiveState] = useState<string | null>(null);
+
+  // Restore activeTab from localStorage after hydration
+  useEffect(() => {
+    const savedTab = localStorage.getItem("activeTab");
+    if (savedTab) {
+      setActiveTab(savedTab);
+    }
+  }, []);
+
+  // Persist activeTab to localStorage
+  useEffect(() => {
+    localStorage.setItem("activeTab", activeTab);
+  }, [activeTab]);
   const [reviewingCompany, setReviewingCompany] = useState<Company | null>(null);
   const [sendingCompany, setSendingCompany] = useState<Company | null>(null);
   const [customPrompt, setCustomPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
@@ -421,21 +434,21 @@ export default function Dashboard() {
       <main className="container mx-auto px-4 py-8 relative z-10">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-8">
-            <TabsTrigger value="dashboard" className="gap-2">
-              <LayoutDashboard className="h-4 w-4" />
-              Pipeline
-            </TabsTrigger>
-            <TabsTrigger value="search" className="gap-2">
-              <Search className="h-4 w-4" />
-              Lead Search
+            <TabsTrigger value="titles" className="gap-2">
+              <Users className="h-4 w-4" />
+              Ünvanlar
             </TabsTrigger>
             <TabsTrigger value="prompts" className="gap-2">
               <FileText className="h-4 w-4" />
               Prompts
             </TabsTrigger>
-            <TabsTrigger value="titles" className="gap-2">
-              <Users className="h-4 w-4" />
-              Ünvanlar
+            <TabsTrigger value="search" className="gap-2">
+              <Search className="h-4 w-4" />
+              Lead Search
+            </TabsTrigger>
+            <TabsTrigger value="dashboard" className="gap-2">
+              <LayoutDashboard className="h-4 w-4" />
+              Pipeline
             </TabsTrigger>
           </TabsList>
 

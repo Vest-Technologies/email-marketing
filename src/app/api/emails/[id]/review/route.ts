@@ -15,14 +15,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const email = await prisma.email.findUnique({
       where: { id },
       include: {
-        company: {
-          include: {
-            employees: {
-              where: { isTitleValid: true },
-              take: 10,
-            },
-          },
-        },
+        company: true,
       },
     });
 

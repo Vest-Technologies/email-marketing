@@ -1,12 +1,10 @@
 import { PrismaClient } from '@/generated/prisma';
 import { PrismaLibSql } from '@prisma/adapter-libsql';
 
-// Create Prisma adapter with file URL - using absolute path for reliability
-const dbUrl = process.env.DATABASE_URL || 'file:./prisma/dev.db';
-
-// Create Prisma adapter
+// Create Prisma adapter for Turso
 const adapter = new PrismaLibSql({
-  url: dbUrl,
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
 // Create global reference for Prisma client

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:migrate": "tsx scripts/migrate-turso.ts",
+    "db:generate": "prisma generate"
   },
   "dependencies": {
     "@aws-sdk/client-ses": "^3.700.0",
@@ -48,6 +50,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "^4.21.0",
+    "typescript": "5.9.3"
   }
 }
