@@ -1,0 +1,127 @@
+// Prisma schema for Email Automation System
+// Apollo → Website → Gemini → Human Review Pipeline
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// Company record from Apollo
+model Company {
+  id        String   @id @default(cuid())
+  apolloId  String?  @unique
+  name      String
+  domain    String
+  website   String?
+  industry  String?
+  location  String?
+  employeeCount Int?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Target contact - found when preparing to send
+  targetContactFirstName   String?
+  targetContactLastName    String?
+  targetContactEmail       String?
+  targetContactTitle       String?
+  contactFoundAt           DateTime?
+
+  // Pipeline state - deterministic tracking
+  // pending_generation | email_not_generated | pending_review | approved_to_send | sent
+  pipelineState String @default("pending_generation")
+
+  // Reason if email not generated
+  notGeneratedReason Json?
+
+  email Email?
+
+  @@index([pipelineState])
+}
+
+// Generated email for a company
+model Email {
+  id        String   @id @default(cuid())
+  companyId String   @unique
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  // Prompt used for generation
+  promptUsed String
+
+  // Generated content from Gemini
+  subject        String
+  body           String
+  generatedAt    DateTime @default(now())
+  geminiModelUsed String?
+
+  // Human review edits
+  editedSubject String?
+  editedBody    String?
+  reviewedAt    DateTime?
+  reviewedBy    String?
+
+  // Final content (after review edits)
+  finalSubject String?
+  finalBody    String?
+
+  // Approval tracking
+  approvedAt DateTime?
+  approvedBy String?
+
+  // Sending tracking
+  sentAt      DateTime?
+  sentTo      String?   // Email address sent to
+  sendError   String?
+  sendAttempts Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// System prompts - base and user-edited
+model Prompt {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  content     String
+  description String?
+  isSystem    Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Target job titles for outreach
+model TargetTitle {
+  id        String   @id @default(cuid())
+  title     String   @unique
+  priority  Int      @default(100) // Lower = higher priority
+  isActive  Boolean  @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([priority])
+}
+
+// Audit log for tracking all state changes
+model AuditLog {
+  id        String   @id @default(cuid())
+  entityType String  // company, email
+  entityId  String
+  action    String   // state_change, email_generated, email_sent, etc.
+  fromState String?
+  toState   String?
+  metadata  Json?
+  
+  performedBy String?
+  performedAt DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([performedAt])
+}
