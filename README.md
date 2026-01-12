@@ -43,16 +43,29 @@ Companies must have **25+ valid titles** to proceed with email generation.
 
 ### 6. Human-in-the-Loop Review
 - **Mandatory blocking step** before any email can be sent
-- Edit subject and body
-- Approve or regenerate
+- Edit subject and body with full scrollable preview
+- Approve, regenerate, or delete emails
+- Auto-populated recipient email from enriched contact
 
 ### 7. Deterministic State Management
 Each company exists in exactly one state:
 - `pending_generation` → Website needs scraping, email not generated
-- `email_not_generated` → Threshold not met or generation failed
+- `email_not_generated` → Threshold not met or generation failed (with retry/reset options)
 - `pending_review` → Email generated, awaiting human review
 - `approved_to_send` → Reviewed and approved, ready to send
 - `sent` → Email delivered
+
+### 8. Email Sending with Amazon SES
+- Production-ready email delivery via Amazon SES
+- Automatic recipient email population from enriched contacts
+- Batch sending capability for approved emails
+- Error handling and retry logic
+- HTML and plain text email support
+
+### 9. Bulk Operations
+- **Process All**: Automatically find contacts and generate emails for all pending companies
+- **Send All**: Send all approved emails in one batch operation
+- Progress tracking and error reporting
 
 ## Tech Stack
 
@@ -117,32 +130,55 @@ Click the "+" button in the header to create a new batch for your campaign.
 4. Select companies and click "Import Selected"
 
 ### 3. Process Companies
+
+#### Manual Processing
 For each company in the pipeline:
-1. **Scrape Website** - Extract content from the company's website
+1. **Find Contact** - Search for decision-makers with target titles
 2. **Generate Email** - Use Gemini AI to create personalized email
-3. **Review Email** - Edit subject/body as needed
+3. **Review Email** - Edit subject/body with scrollable preview
 4. **Approve** - Mark as ready to send
-5. **Send** - Select recipient and send
+5. **Send** - Recipient email auto-populated, send individually or in bulk
+
+#### Bulk Processing
+- **Process All**: Click "Tümünü İşle" to automatically process all pending companies
+- **Send All**: Click "Tümünü Gönder" to send all approved emails at once
+
+#### Handling Failed Generations
+For companies in `email_not_generated` state:
+- View error reason in the company card
+- **Retry**: Attempt email generation again
+- **Reset**: Reset company to `pending_generation` state
+- **Find Contact**: If no contact found, search again
 
 ### 4. Customize Prompts
 Go to "Prompts" tab to edit the email generation prompt at the batch level.
+
+### 5. Email Management
+- **Delete**: Remove email and reset company to pending generation
+- **Regenerate**: Create new email with updated prompt
+- **Review**: Edit email content before approval
+- Full email preview with scrollable content
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/batches` | GET, POST | List/create batches |
-| `/api/batches/[id]` | GET, PATCH, DELETE | Manage batch |
-| `/api/companies/search` | POST | Search Apollo |
-| `/api/companies/import` | POST | Import companies |
-| `/api/companies/[id]/scrape` | POST | Scrape website |
-| `/api/companies/[id]/generate` | POST | Generate email |
-| `/api/emails/[id]/review` | GET, POST | Review email |
-| `/api/emails/[id]/approve` | POST | Approve email |
-| `/api/emails/[id]/send` | POST | Send email |
-| `/api/pipeline/stats` | GET | Pipeline statistics |
-| `/api/pipeline/companies` | GET | Companies by state |
-| `/api/prompts` | GET, POST | Manage prompts |
+| `/api/companies/search` | POST | Search companies via Apollo |
+| `/api/companies/import` | POST | Import selected companies |
+| `/api/companies/[id]` | GET, PATCH, DELETE | Get, update, or delete company |
+| `/api/companies/[id]/find-contact` | POST | Find best contact with target titles |
+| `/api/companies/[id]/generate` | POST | Generate email using Gemini |
+| `/api/companies/[id]/email` | DELETE | Delete email and reset company |
+| `/api/emails/[id]/review` | POST | Save email review edits |
+| `/api/emails/[id]/approve` | POST | Approve email for sending |
+| `/api/emails/[id]/send` | POST | Send approved email via Amazon SES |
+| `/api/pipeline/stats` | GET | Get pipeline statistics |
+| `/api/pipeline/companies` | GET | Get companies by pipeline state |
+| `/api/pipeline/process-all` | POST | Process all pending companies |
+| `/api/pipeline/send-all` | POST | Send all approved emails |
+| `/api/target-titles` | GET, POST | Manage target job titles |
+| `/api/prompts` | GET, POST | Manage email generation prompts |
+| `/api/db/clear` | POST | Clear all database data |
 
 ## Architecture
 
@@ -161,9 +197,8 @@ src/
 │   ├── services/      # Business logic
 │   │   ├── apollo.ts      # Apollo API integration
 │   │   ├── gemini.ts      # Gemini AI integration
-│   │   ├── pipeline.ts    # State management
-│   │   ├── title-validator.ts  # Title allowlist
-│   │   └── website-scraper.ts  # Web scraping
+│   │   ├── email-sender.ts # Amazon SES email sending
+│   │   └── pipeline.ts    # State management
 │   ├── constants.ts   # Configuration
 │   ├── prisma.ts      # Database client
 │   └── utils.ts       # Utilities
@@ -171,15 +206,33 @@ src/
     └── prisma/        # Generated Prisma client
 ```
 
-## Hard Rules
+## Key Features & Rules
 
-✅ Manual prompt editing allowed
-❌ No LinkedIn, Apollo descriptions, Crunchbase, news, or external enrichment
-❌ No persona-based personalization
+### Allowed
+✅ Manual prompt editing at batch or company level
 ✅ Only company's own website used as AI context
 ✅ Email generation is company-based, not person-based
-✅ Emails are never auto-sent
-✅ Deterministic state tracking required
+✅ Human review required before sending
+✅ Deterministic state tracking
+✅ Bulk operations (process all, send all)
+✅ Email regeneration and deletion
+✅ Retry failed operations
+
+### Not Allowed
+❌ No LinkedIn, Apollo descriptions, Crunchbase, news, or external enrichment
+❌ No persona-based personalization
+❌ Emails are never auto-sent (human approval required)
+❌ No automatic email sending without explicit user action
+
+## Recent Updates
+
+- ✨ Amazon SES integration for production email delivery
+- ✨ Auto-populated recipient emails from enriched contacts
+- ✨ Bulk send all approved emails
+- ✨ Delete and regenerate email functionality
+- ✨ Retry and reset options for failed generations
+- ✨ Improved email preview with scrollable content
+- ✨ Database clear endpoint for testing
 
 ## License
 
