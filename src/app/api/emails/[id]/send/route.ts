@@ -12,8 +12,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { recipientEmail, performedBy } = body;
-    
+    const { recipientEmail, performedBy, senderEmail } = body;
+
     if (!recipientEmail) {
       return NextResponse.json(
         { error: 'Recipient email is required' },
@@ -40,7 +40,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const result = await sendApprovedEmail(
       email.companyId,
       recipientEmail,
-      performedBy
+      performedBy,
+      senderEmail
     );
 
     if (!result.success) {

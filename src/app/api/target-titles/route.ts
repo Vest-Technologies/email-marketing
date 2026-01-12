@@ -40,8 +40,12 @@ async function initializeDefaultTitles() {
 // GET /api/target-titles - Get all target titles
 export async function GET() {
   try {
-    await initializeDefaultTitles();
-    
+    // Check if we have any titles, initialize if empty
+    const existingCount = await prisma.targetTitle.count();
+    if (existingCount === 0) {
+      await initializeDefaultTitles();
+    }
+
     const titles = await prisma.targetTitle.findMany({
       orderBy: { priority: 'asc' },
     });
@@ -50,7 +54,7 @@ export async function GET() {
   } catch (error) {
     console.error('Error fetching titles:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch titles' },
+      { error: 'Failed to fetch titles', details: String(error) },
       { status: 500 }
     );
   }

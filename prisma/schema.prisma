@@ -118,10 +118,22 @@ model AuditLog {
   fromState String?
   toState   String?
   metadata  Json?
-  
+
   performedBy String?
   performedAt DateTime @default(now())
 
   @@index([entityType, entityId])
   @@index([performedAt])
+}
+
+// Application settings (singleton pattern - one row)
+model Settings {
+  id        String   @id @default("default")
+
+  // Email configuration
+  senderEmail     String?  // FROM email address for sending
+  senderName      String?  // Display name for sender
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

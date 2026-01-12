@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "tsx scripts/migrate-turso.ts",
@@ -34,6 +34,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
+    "jose": "^6.1.3",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
     "prisma": "^7.2.0",

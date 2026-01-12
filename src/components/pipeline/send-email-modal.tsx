@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -14,15 +15,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Building2, 
-  Send, 
+import {
+  Building2,
+  Send,
   X,
   Loader2,
   Mail,
   User,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  AtSign
 } from "lucide-react";
 
 interface SendEmailModalProps {
@@ -52,9 +54,20 @@ interface SendEmailModalProps {
       isTitleValid: boolean;
     }>;
   } | null;
-  onSend: (emailId: string, recipientEmail: string) => Promise<void>;
+  onSend: (emailId: string, recipientEmail: string, senderEmail?: string) => Promise<void>;
   onDelete?: (companyId: string) => Promise<void>;
   onRegenerate?: (companyId: string) => Promise<void>;
+}
+
+interface SettingsResponse {
+  settings: {
+    senderEmail: string | null;
+    senderName: string | null;
+  };
+  userEmail: string | null;
+  envFallback: {
+    senderEmail: string | null;
+  };
 }
 
 export function SendEmailModal({
@@ -66,10 +79,35 @@ export function SendEmailModal({
   onRegenerate,
 }: SendEmailModalProps) {
   const [recipientEmail, setRecipientEmail] = useState("");
+  const [senderEmail, setSenderEmail] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<string | null>(null);
+
+  // Fetch settings to get sender email
+  const { data: settingsData } = useQuery<SettingsResponse>({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings");
+      if (!res.ok) throw new Error("Failed to fetch settings");
+      return res.json();
+    },
+    enabled: isOpen,
+  });
+
+  // Get effective sender email
+  const defaultSenderEmail = settingsData?.settings?.senderEmail ||
+    settingsData?.userEmail ||
+    settingsData?.envFallback?.senderEmail ||
+    "";
+
+  // Auto-populate sender email when settings load
+  useEffect(() => {
+    if (isOpen && defaultSenderEmail && !senderEmail) {
+      setSenderEmail(defaultSenderEmail);
+    }
+  }, [isOpen, defaultSenderEmail, senderEmail]);
 
   // Auto-populate recipient email when modal opens if targetContactEmail exists
   useEffect(() => {
@@ -91,6 +129,13 @@ export function SendEmailModal({
     }
   }, [isOpen, company?.targetContactEmail, company?.employees]);
 
+  // Reset sender email when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setSenderEmail("");
+    }
+  }, [isOpen]);
+
   const handleSelectEmployee = (email: string) => {
     setRecipientEmail(email);
     setSelectedEmployee(email);
@@ -100,12 +145,14 @@ export function SendEmailModal({
     if (!company?.email || !recipientEmail) return;
     setIsSending(true);
     try {
-      await onSend(company.email.id, recipientEmail);
+      await onSend(company.email.id, recipientEmail, senderEmail || undefined);
       onClose();
     } finally {
       setIsSending(false);
     }
   };
+
+  const isValidSenderEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail);
 
   const handleDelete = async () => {
     if (!company?.id || !onDelete) return;
@@ -161,6 +208,24 @@ export function SendEmailModal({
         <Separator className="my-4" />
 
         <div className="flex-1 flex flex-col min-h-0 gap-4">
+          {/* Sender Email */}
+          <div className="space-y-2 flex-shrink-0">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <AtSign className="h-4 w-4" />
+              Sender Email (From)
+            </Label>
+            <Input
+              type="email"
+              value={senderEmail}
+              onChange={(e) => setSenderEmail(e.target.value)}
+              placeholder={defaultSenderEmail || "noreply@yourdomain.com"}
+              className={!isValidSenderEmail && senderEmail ? "border-destructive" : ""}
+            />
+            {!isValidSenderEmail && senderEmail && (
+              <p className="text-xs text-destructive">Gecerli bir email adresi girin</p>
+            )}
+          </div>
+
           {/* Recipient Selection */}
           <div className="space-y-2 flex-shrink-0">
             <Label className="text-sm font-medium">Select Recipient</Label>
@@ -258,6 +323,10 @@ export function SendEmailModal({
             <div className="bg-muted/50 rounded-lg border border-border flex-1 flex flex-col min-h-0">
               <div className="p-2.5 space-y-1.5 border-b border-border flex-shrink-0">
                 <div className="text-sm">
+                  <span className="text-muted-foreground">From: </span>
+                  <span className="font-medium">{senderEmail || "(sender not set)"}</span>
+                </div>
+                <div className="text-sm">
                   <span className="text-muted-foreground">To: </span>
                   <span className="font-medium">{recipientEmail || "(select recipient)"}</span>
                 </div>
@@ -318,7 +387,7 @@ export function SendEmailModal({
             </div>
             <Button
               onClick={handleSend}
-              disabled={isSending || !recipientEmail || !isValidEmail || isDeleting || isRegenerating}
+              disabled={isSending || !recipientEmail || !isValidEmail || !senderEmail || !isValidSenderEmail || isDeleting || isRegenerating}
             >
               {isSending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

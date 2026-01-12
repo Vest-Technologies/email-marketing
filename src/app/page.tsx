@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -8,10 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { 
-  Zap, 
-  LayoutDashboard, 
-  Search, 
+import {
+  Zap,
+  LayoutDashboard,
+  Search,
   FileText,
   Users,
   RefreshCw,
@@ -19,7 +20,8 @@ import {
   Building2,
   Play,
   CheckCircle2,
-  Send
+  Send,
+  LogOut
 } from "lucide-react";
 
 import { PipelineStats } from "@/components/pipeline/pipeline-stats";
@@ -29,6 +31,7 @@ import { SendEmailModal } from "@/components/pipeline/send-email-modal";
 import { PromptEditor } from "@/components/pipeline/prompt-editor";
 import { CompanySearch } from "@/components/apollo/company-search";
 import { TargetTitleManager } from "@/components/settings/target-title-manager";
+import { EmailSettings } from "@/components/settings/email-settings";
 import { PIPELINE_STATES, DEFAULT_SYSTEM_PROMPT } from "@/lib/constants";
 
 type Company = {
@@ -58,8 +61,23 @@ type Company = {
 };
 
 export default function Dashboard() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("titles");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      router.push("/login");
+      router.refresh();
+    } catch (error) {
+      console.error("Logout failed:", error);
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
   const [activeState, setActiveState] = useState<string | null>(null);
 
   // Restore activeTab from localStorage after hydration
@@ -258,11 +276,11 @@ export default function Dashboard() {
 
   // Send email mutation
   const sendMutation = useMutation({
-    mutationFn: async ({ emailId, recipientEmail }: { emailId: string; recipientEmail: string }) => {
+    mutationFn: async ({ emailId, recipientEmail, senderEmail }: { emailId: string; recipientEmail: string; senderEmail?: string }) => {
       const res = await fetch(`/api/emails/${emailId}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipientEmail }),
+        body: JSON.stringify({ recipientEmail, senderEmail }),
       });
       if (!res.ok) throw new Error("Send failed");
       return res.json();
@@ -425,6 +443,18 @@ export default function Dashboard() {
               <Button variant="outline" size="sm" onClick={handleRefresh}>
                 <RefreshCw className="h-4 w-4" />
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                disabled={isLoggingOut}
+              >
+                {isLoggingOut ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <LogOut className="h-4 w-4" />
+                )}
+              </Button>
             </div>
           </div>
         </div>
@@ -436,7 +466,7 @@ export default function Dashboard() {
           <TabsList className="mb-8">
             <TabsTrigger value="titles" className="gap-2">
               <Users className="h-4 w-4" />
-              Ünvanlar
+              Ayarlar
             </TabsTrigger>
             <TabsTrigger value="prompts" className="gap-2">
               <FileText className="h-4 w-4" />
@@ -712,7 +742,10 @@ export default function Dashboard() {
 
           {/* Titles Tab */}
           <TabsContent value="titles" className="animate-fade-in">
-            <TargetTitleManager />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <TargetTitleManager />
+              <EmailSettings />
+            </div>
           </TabsContent>
 
         </Tabs>
@@ -736,8 +769,8 @@ export default function Dashboard() {
         isOpen={!!sendingCompany}
         onClose={() => setSendingCompany(null)}
         company={sendingCompany}
-        onSend={async (emailId, recipientEmail) => {
-          await sendMutation.mutateAsync({ emailId, recipientEmail });
+        onSend={async (emailId, recipientEmail, senderEmail) => {
+          await sendMutation.mutateAsync({ emailId, recipientEmail, senderEmail });
         }}
         onDelete={sendingCompany?.id ? async (companyId) => {
           await deleteEmailMutation.mutateAsync(companyId);

@@ -32,12 +32,36 @@ function textToHtml(text: string): string {
 }
 
 /**
+ * Get sender email from settings or environment variable
+ */
+async function getSenderEmail(): Promise<{ email: string | null; name: string | null }> {
+  try {
+    const settings = await prisma.settings.findUnique({
+      where: { id: 'default' },
+    });
+
+    if (settings?.senderEmail) {
+      return { email: settings.senderEmail, name: settings.senderName };
+    }
+  } catch (error) {
+    console.warn('[SES] Could not fetch sender email from settings, falling back to env:', error);
+  }
+
+  // Fallback to environment variable
+  return {
+    email: process.env.FROM_EMAIL || process.env.AWS_SES_FROM_EMAIL || null,
+    name: null,
+  };
+}
+
+/**
  * Send an email using Amazon SES
  */
 async function sendEmailViaProvider(
   to: string,
   subject: string,
-  body: string
+  body: string,
+  customSenderEmail?: string
 ): Promise<SendResult> {
   // Validate environment variables
   if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
@@ -47,11 +71,22 @@ async function sendEmailViaProvider(
     };
   }
 
-  const fromEmail = process.env.FROM_EMAIL || process.env.AWS_SES_FROM_EMAIL;
+  // Use custom sender email if provided, otherwise get from settings
+  let fromEmail: string | null;
+  let senderName: string | null = null;
+
+  if (customSenderEmail) {
+    fromEmail = customSenderEmail;
+  } else {
+    const sender = await getSenderEmail();
+    fromEmail = sender.email;
+    senderName = sender.name;
+  }
+
   if (!fromEmail) {
     return {
       success: false,
-      error: 'FROM_EMAIL not configured. Please set FROM_EMAIL or AWS_SES_FROM_EMAIL environment variable.',
+      error: 'Sender email not configured. Please configure it in Settings or set FROM_EMAIL environment variable.',
     };
   }
 
@@ -75,9 +110,12 @@ async function sendEmailViaProvider(
     // Convert plain text body to HTML
     const htmlBody = textToHtml(body);
 
+    // Format source with display name if available
+    const source = senderName ? `"${senderName}" <${fromEmail}>` : fromEmail;
+
     // Create email command
     const command = new SendEmailCommand({
-      Source: fromEmail,
+      Source: source,
       Destination: {
         ToAddresses: [to],
       },
@@ -134,7 +172,8 @@ async function sendEmailViaProvider(
 export async function sendApprovedEmail(
   companyId: string,
   recipientEmail: string,
-  performedBy?: string
+  performedBy?: string,
+  customSenderEmail?: string
 ): Promise<{ success: boolean; error?: string }> {
   const company = await prisma.company.findUnique({
     where: { id: companyId },
@@ -161,7 +200,7 @@ export async function sendApprovedEmail(
   const body = email.finalBody || email.editedBody || email.body;
 
   // Attempt to send
-  const result = await sendEmailViaProvider(recipientEmail, subject, body);
+  const result = await sendEmailViaProvider(recipientEmail, subject, body, customSenderEmail);
 
   if (!result.success) {
     // Update send attempts and error
