@@ -2,11 +2,10 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { 
-  Clock, 
-  AlertCircle, 
-  Eye, 
-  CheckCircle2, 
+import {
+  AlertCircle,
+  Eye,
+  CheckCircle2,
   Send,
   TrendingUp
 } from "lucide-react";
@@ -16,7 +15,6 @@ interface PipelineStatsProps {
   stats: {
     total: number;
     byState: {
-      pending_generation: number;
       email_not_generated: number;
       pending_review: number;
       approved_to_send: number;
@@ -28,12 +26,6 @@ interface PipelineStatsProps {
 }
 
 const stateConfig = {
-  pending_generation: {
-    label: "Pending Generation",
-    icon: Clock,
-    color: "bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800",
-    activeColor: "bg-slate-500 text-white",
-  },
   email_not_generated: {
     label: "Not Generated",
     icon: AlertCircle,
@@ -41,7 +33,7 @@ const stateConfig = {
     activeColor: "bg-amber-500 text-white",
   },
   pending_review: {
-    label: "Pending Review",
+    label: "Generated",
     icon: Eye,
     color: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800",
     activeColor: "bg-blue-500 text-white",

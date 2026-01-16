@@ -260,8 +260,8 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
                 <Button variant="outline" size="sm" onClick={toggleAll}>
                   {selectedCompanies.size === companies.length ? "Deselect All" : "Select All"}
                 </Button>
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   onClick={handleImport}
                   disabled={selectedCompanies.size === 0 || isImporting}
                 >
@@ -270,7 +270,7 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
                   ) : (
                     <ChevronRight className="h-4 w-4" />
                   )}
-                  Import {selectedCompanies.size} Selected
+                  {isImporting ? "Generating..." : `Generate ${selectedCompanies.size} Selected`}
                 </Button>
               </div>
             </div>

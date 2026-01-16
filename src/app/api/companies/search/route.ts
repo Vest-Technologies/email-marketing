@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchCompanies, type ApolloFilters } from '@/lib/services/apollo';
+import prisma from '@/lib/prisma';
 
 // POST /api/companies/search - Search companies via Apollo
 export async function POST(request: NextRequest) {
@@ -40,8 +41,22 @@ export async function POST(request: NextRequest) {
 
     const result = await searchCompanies(apolloFilters, page, perPage);
 
+    // Get all fetched organization IDs for exclusion
+    const fetchedOrgs = await prisma.fetchedOrganization.findMany({
+      select: { apolloId: true },
+    });
+    const excludedIds = new Set(fetchedOrgs.map(o => o.apolloId));
+
+    // Filter out already-fetched companies
+    const filteredCompanies = result.companies.filter(company => {
+      const orgId = company.organization_id || company.id;
+      return !excludedIds.has(orgId);
+    });
+
+    // Note: pagination.total_entries from Apollo won't reflect our filtering
+    // since we filter after Apollo returns results
     return NextResponse.json({
-      companies: result.companies,
+      companies: filteredCompanies,
       pagination: result.pagination,
     });
   } catch (error) {

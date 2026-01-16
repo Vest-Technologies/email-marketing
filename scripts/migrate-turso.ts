@@ -23,6 +23,27 @@ async function migrate() {
   `);
 
   console.log('Settings table created/verified.');
+
+  // Create FetchedOrganization table if it doesn't exist (for tracking imported Apollo organizations)
+  await client.execute(`
+    CREATE TABLE IF NOT EXISTS FetchedOrganization (
+      id TEXT PRIMARY KEY,
+      apolloId TEXT UNIQUE NOT NULL,
+      domain TEXT,
+      name TEXT,
+      fetchedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Create indexes for FetchedOrganization
+  await client.execute(`
+    CREATE INDEX IF NOT EXISTS idx_fetched_org_apolloId ON FetchedOrganization(apolloId)
+  `);
+  await client.execute(`
+    CREATE INDEX IF NOT EXISTS idx_fetched_org_domain ON FetchedOrganization(domain)
+  `);
+
+  console.log('FetchedOrganization table created/verified.');
   console.log('Migration complete!');
 }
 

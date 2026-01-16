@@ -38,8 +38,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { editedSubject, editedBody, reviewedBy } = body;
-    
+    const { editedSubject, editedBody, reviewedBy, recipientEmail } = body;
+
     const email = await prisma.email.findUnique({
       where: { id },
       include: { company: true },
@@ -63,10 +63,25 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       data: {
         editedSubject: editedSubject.trim(),
         editedBody: editedBody.trim(),
+        // Also update finalSubject/finalBody for approved emails
+        ...(email.company.pipelineState === 'approved_to_send' && {
+          finalSubject: editedSubject.trim(),
+          finalBody: editedBody.trim(),
+        }),
         reviewedAt: new Date(),
         reviewedBy,
       },
     });
+
+    // Update recipient email on company if provided
+    if (recipientEmail?.trim()) {
+      await prisma.company.update({
+        where: { id: email.companyId },
+        data: {
+          targetContactEmail: recipientEmail.trim(),
+        },
+      });
+    }
 
     // Create audit log
     await prisma.auditLog.create({
@@ -77,6 +92,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         metadata: {
           editedSubject: editedSubject !== email.subject,
           editedBody: editedBody !== email.body,
+          recipientEmailChanged: !!recipientEmail,
           reviewedBy,
         },
       },

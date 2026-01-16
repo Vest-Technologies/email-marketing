@@ -18,7 +18,6 @@ import {
   RefreshCw,
   Loader2,
   Building2,
-  Play,
   CheckCircle2,
   Send,
   LogOut
@@ -26,8 +25,10 @@ import {
 
 import { PipelineStats } from "@/components/pipeline/pipeline-stats";
 import { CompanyCard } from "@/components/pipeline/company-card";
+import { BatchActionBar } from "@/components/pipeline/batch-action-bar";
+import { DeleteConfirmationDialog } from "@/components/pipeline/delete-confirmation-dialog";
+import { SendConfirmationDialog } from "@/components/pipeline/send-confirmation-dialog";
 import { EmailReviewModal } from "@/components/pipeline/email-review-modal";
-import { SendEmailModal } from "@/components/pipeline/send-email-modal";
 import { PromptEditor } from "@/components/pipeline/prompt-editor";
 import { CompanySearch } from "@/components/apollo/company-search";
 import { TargetTitleManager } from "@/components/settings/target-title-manager";
@@ -57,6 +58,7 @@ type Company = {
     editedBody?: string | null;
     finalSubject?: string | null;
     finalBody?: string | null;
+    sentTo?: string | null;
   } | null;
 };
 
@@ -93,21 +95,45 @@ export default function Dashboard() {
     localStorage.setItem("activeTab", activeTab);
   }, [activeTab]);
   const [reviewingCompany, setReviewingCompany] = useState<Company | null>(null);
-  const [sendingCompany, setSendingCompany] = useState<Company | null>(null);
   const [customPrompt, setCustomPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
-  const [processingAll, setProcessingAll] = useState(false);
-  const [processAllResult, setProcessAllResult] = useState<{
-    processed: number;
-    emailsGenerated: number;
-    noContact: number;
-    errors: number;
-  } | null>(null);
-  const [sendingAll, setSendingAll] = useState(false);
-  const [sendAllResult, setSendAllResult] = useState<{
-    sent: number;
-    failed: number;
-    errors: Array<{ companyId: string; companyName: string; error: string }>;
-  } | null>(null);
+
+  // Selection state for batch operations
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<string>>(new Set());
+
+  // Delete confirmation dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
+
+  // Send confirmation dialog state
+  const [sendDialogOpen, setSendDialogOpen] = useState(false);
+  const [sendingCompany, setSendingCompany] = useState<Company | null>(null);
+
+  // Clear selection when switching pipeline states
+  useEffect(() => {
+    setSelectedCompanyIds(new Set());
+  }, [activeState]);
+
+  // Selection helpers
+  const toggleSelection = (companyId: string) => {
+    setSelectedCompanyIds(prev => {
+      const next = new Set(prev);
+      if (next.has(companyId)) {
+        next.delete(companyId);
+      } else {
+        next.add(companyId);
+      }
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    const allIds = companies.map(c => c.id);
+    setSelectedCompanyIds(new Set(allIds));
+  };
+
+  const clearSelection = () => {
+    setSelectedCompanyIds(new Set());
+  };
 
   // Fetch pipeline stats
   const { data: statsData, refetch: refetchStats } = useQuery({
@@ -116,6 +142,7 @@ export default function Dashboard() {
       const res = await fetch("/api/pipeline/stats");
       return res.json();
     },
+    staleTime: 0, // Always fetch fresh data
   });
 
   // Fetch companies by state
@@ -129,35 +156,16 @@ export default function Dashboard() {
       return res.json();
     },
     enabled: !!activeState,
-  });
-
-  // Generate email mutation
-  const generateMutation = useMutation({
-    mutationFn: async (companyId: string) => {
-      const res = await fetch(`/api/companies/${companyId}/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customPrompt }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Email oluşturulamadı");
-      }
-      return data;
-    },
-    onSuccess: () => {
-      refetchCompanies();
-      refetchStats();
-    },
+    staleTime: 0, // Always fetch fresh data when switching tabs
   });
 
   // Save review mutation
   const saveReviewMutation = useMutation({
-    mutationFn: async ({ emailId, subject, body }: { emailId: string; subject: string; body: string }) => {
+    mutationFn: async ({ emailId, subject, body, recipientEmail }: { emailId: string; subject: string; body: string; recipientEmail?: string }) => {
       const res = await fetch(`/api/emails/${emailId}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ editedSubject: subject, editedBody: body }),
+        body: JSON.stringify({ editedSubject: subject, editedBody: body, recipientEmail }),
       });
       if (!res.ok) throw new Error("Save failed");
       return res.json();
@@ -178,31 +186,13 @@ export default function Dashboard() {
           body: JSON.stringify({ editedSubject: subject, editedBody: body }),
         });
       }
-      
+
       const res = await fetch(`/api/emails/${emailId}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
       if (!res.ok) throw new Error("Approve failed");
-      return res.json();
-    },
-    onSuccess: () => {
-      refetchCompanies();
-      refetchStats();
-    },
-  });
-
-  // Delete email mutation
-  const deleteEmailMutation = useMutation({
-    mutationFn: async (companyId: string) => {
-      const res = await fetch(`/api/companies/${companyId}/email`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Email silinemedi");
-      }
       return res.json();
     },
     onSuccess: () => {
@@ -257,7 +247,7 @@ export default function Dashboard() {
       const res = await fetch(`/api/companies/${companyId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           pipelineState: PIPELINE_STATES.PENDING_GENERATION,
           notGeneratedReason: null,
         }),
@@ -314,93 +304,131 @@ export default function Dashboard() {
     },
   });
 
-  // Import companies mutation
+  // Import companies mutation (now auto-generates emails)
   const importMutation = useMutation({
     mutationFn: async ({ companies }: { companies: unknown[] }) => {
       const res = await fetch("/api/companies/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companies }),
+        body: JSON.stringify({
+          companies,
+          customPrompt: customPrompt !== DEFAULT_SYSTEM_PROMPT ? customPrompt : undefined,
+        }),
       });
       if (!res.ok) throw new Error("Import failed");
       return res.json();
     },
     onSuccess: () => {
-      // Set active state first so query is enabled, then refetch
-      setActiveState(PIPELINE_STATES.PENDING_GENERATION);
+      // Switch to Pipeline tab and show Generated state
+      setActiveTab("dashboard");
+      setActiveState(PIPELINE_STATES.PENDING_REVIEW);
       refetchStats();
       // Invalidate and refetch companies query - it will auto-refetch when activeState changes
       queryClient.invalidateQueries({ queryKey: ["companies"] });
     },
   });
 
-  // Process all companies mutation
-  const processAllMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/pipeline/process-all", {
+  // Batch approve mutation
+  const batchApproveMutation = useMutation({
+    mutationFn: async (companyIds: string[]) => {
+      const res = await fetch("/api/pipeline/batch-approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          customPrompt: customPrompt !== DEFAULT_SYSTEM_PROMPT ? customPrompt : undefined,
-        }),
+        body: JSON.stringify({ companyIds }),
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "İşleme başarısız");
+        throw new Error(errorData.error || "Toplu onaylama başarısız");
       }
       return res.json();
     },
     onSuccess: (data) => {
-      setProcessAllResult(data);
+      clearSelection();
       refetchStats();
-      if (activeState === PIPELINE_STATES.PENDING_GENERATION) {
-        refetchCompanies();
+      refetchCompanies();
+      // Auto-navigate to approved_to_send if any were approved
+      if (data.approved > 0) {
+        setActiveState(PIPELINE_STATES.APPROVED_TO_SEND);
       }
-      // Auto-switch to pending_review if emails were generated
-      if (data.emailsGenerated > 0) {
-        setActiveState(PIPELINE_STATES.PENDING_REVIEW);
-      }
-    },
-    onError: (error: Error) => {
-      console.error("Process all error:", error);
-      setProcessingAll(false);
     },
   });
 
-  // Send all approved emails mutation
-  const sendAllMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/pipeline/send-all", {
+  // Batch delete mutation
+  const batchDeleteMutation = useMutation({
+    mutationFn: async ({ companyIds, alsoDeleteFromFetched }: { companyIds: string[]; alsoDeleteFromFetched: boolean }) => {
+      const res = await fetch("/api/pipeline/batch-delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyIds, alsoDeleteFromFetched }),
       });
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Gönderme başarısız");
+        throw new Error(errorData.error || "Toplu silme başarısız");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      clearSelection();
+      setDeleteDialogOpen(false);
+      setDeleteTargetIds([]);
+      refetchStats();
+      refetchCompanies();
+    },
+  });
+
+  // Batch send mutation
+  const batchSendMutation = useMutation({
+    mutationFn: async (companyIds: string[]) => {
+      const res = await fetch("/api/pipeline/batch-send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyIds }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Toplu gönderim başarısız");
       }
       return res.json();
     },
     onSuccess: (data) => {
-      setSendAllResult(data);
+      clearSelection();
       refetchStats();
-      if (activeState === PIPELINE_STATES.APPROVED_TO_SEND) {
-        refetchCompanies();
-      }
-      // Auto-switch to sent if emails were sent
+      refetchCompanies();
+      // Auto-navigate to sent if any were sent
       if (data.sent > 0) {
         setActiveState(PIPELINE_STATES.SENT);
       }
     },
-    onError: (error: Error) => {
-      console.error("Send all error:", error);
-      setSendingAll(false);
+  });
+
+  // Batch retry mutation
+  const batchRetryMutation = useMutation({
+    mutationFn: async (companyIds: string[]) => {
+      const res = await fetch("/api/pipeline/batch-retry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyIds, customPrompt }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Toplu yeniden deneme başarısız");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      clearSelection();
+      refetchStats();
+      refetchCompanies();
+      // Auto-navigate to pending_review if any were generated
+      if (data.generated > 0) {
+        setActiveState(PIPELINE_STATES.PENDING_REVIEW);
+      }
     },
   });
 
   const stats = statsData?.stats || {
     total: 0,
     byState: {
-      pending_generation: 0,
       email_not_generated: 0,
       pending_review: 0,
       approved_to_send: 0,
@@ -424,7 +452,7 @@ export default function Dashboard() {
       {/* Background Pattern */}
       <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
       <div className="fixed inset-0 bg-grid-pattern opacity-50 pointer-events-none" />
-      
+
       {/* Header */}
       <header className="sticky top-0 z-50 glass border-b border-border/50">
         <div className="container mx-auto px-4 py-4">
@@ -438,7 +466,7 @@ export default function Dashboard() {
                 <p className="text-xs text-muted-foreground">Email Automation</p>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
               <Button variant="outline" size="sm" onClick={handleRefresh}>
                 <RefreshCw className="h-4 w-4" />
@@ -486,176 +514,38 @@ export default function Dashboard() {
           <TabsContent value="dashboard" className="space-y-8 animate-fade-in">
             {/* Pipeline Stats */}
             <div className="space-y-4">
-              <PipelineStats 
-                stats={stats} 
+              <PipelineStats
+                stats={stats}
                 onStateClick={handleStateClick}
                 activeState={activeState || undefined}
               />
-              
-              {/* Process All Button */}
-              {stats.byState.pending_generation > 0 && (
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-semibold mb-1">Otomatik İşleme</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {stats.byState.pending_generation} şirket için otomatik olarak kişi bul ve email oluştur
-                        </p>
-                      </div>
-                      <Button
-                        onClick={async () => {
-                          setProcessingAll(true);
-                          setProcessAllResult(null);
-                          try {
-                            await processAllMutation.mutateAsync();
-                          } finally {
-                            setProcessingAll(false);
-                          }
-                        }}
-                        disabled={processingAll || processAllMutation.isPending}
-                        size="lg"
-                      >
-                        {processingAll || processAllMutation.isPending ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            İşleniyor...
-                          </>
-                        ) : (
-                          <>
-                            <Play className="h-4 w-4 mr-2" />
-                            Tümünü İşle
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                    
-                    {/* Process All Result */}
-                    {processAllResult && (
-                      <div className="mt-4 p-4 bg-muted/50 rounded-lg space-y-2">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                          İşleme Tamamlandı
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                          <div>
-                            <div className="text-muted-foreground">İşlenen</div>
-                            <div className="font-semibold">{processAllResult.processed}</div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">Email Oluşturulan</div>
-                            <div className="font-semibold text-green-600">{processAllResult.emailsGenerated}</div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">Kişi Bulunamadı</div>
-                            <div className="font-semibold text-yellow-600">{processAllResult.noContact}</div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">Hata</div>
-                            <div className="font-semibold text-red-600">{processAllResult.errors}</div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Send All Button */}
-              {stats.byState.approved_to_send > 0 && (
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="font-semibold mb-1">Toplu Gönderim</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {stats.byState.approved_to_send} onaylanmış email'i gönder
-                        </p>
-                      </div>
-                      <Button
-                        onClick={async () => {
-                          if (!confirm(`Are you sure you want to send ${stats.byState.approved_to_send} emails? This action cannot be undone.`)) {
-                            return;
-                          }
-                          setSendingAll(true);
-                          setSendAllResult(null);
-                          try {
-                            await sendAllMutation.mutateAsync();
-                          } finally {
-                            setSendingAll(false);
-                          }
-                        }}
-                        disabled={sendingAll || sendAllMutation.isPending}
-                        size="lg"
-                        variant="default"
-                      >
-                        {sendingAll || sendAllMutation.isPending ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Gönderiliyor...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="h-4 w-4 mr-2" />
-                            Tümünü Gönder
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                    
-                    {/* Send All Result */}
-                    {sendAllResult && (
-                      <div className="mt-4 p-4 bg-muted/50 rounded-lg space-y-2">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                          Gönderim Tamamlandı
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <div className="text-muted-foreground">Gönderilen</div>
-                            <div className="font-semibold text-green-600">{sendAllResult.sent}</div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">Başarısız</div>
-                            <div className="font-semibold text-red-600">{sendAllResult.failed}</div>
-                          </div>
-                        </div>
-                        {sendAllResult.errors.length > 0 && (
-                          <div className="mt-2">
-                            <div className="text-xs font-medium text-muted-foreground mb-1">Hatalar:</div>
-                            <div className="space-y-1 max-h-32 overflow-y-auto">
-                              {sendAllResult.errors.slice(0, 5).map((error, idx) => (
-                                <div key={idx} className="text-xs text-red-600">
-                                  {error.companyName}: {error.error}
-                                </div>
-                              ))}
-                              {sendAllResult.errors.length > 5 && (
-                                <div className="text-xs text-muted-foreground">
-                                  +{sendAllResult.errors.length - 5} more errors
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
             </div>
 
             {/* Companies Grid */}
             {activeState && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">
-                    {activeState.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
-                  </h2>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-lg font-semibold">
+                      {activeState.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())}
+                    </h2>
+                    {companies.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={selectedCompanyIds.size === companies.length ? clearSelection : selectAll}
+                      >
+                        {selectedCompanyIds.size === companies.length ? "Seçimi Kaldır" : "Tümünü Seç"}
+                      </Button>
+                    )}
+                  </div>
                   <Badge variant="secondary">
-                    {companies.length} companies
+                    {selectedCompanyIds.size > 0
+                      ? `${selectedCompanyIds.size} / ${companies.length} seçildi`
+                      : `${companies.length} şirket`}
                   </Badge>
                 </div>
-                
+
                 {isLoadingCompanies ? (
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -675,11 +565,10 @@ export default function Dashboard() {
                       <CompanyCard
                         key={company.id}
                         company={company}
+                        isSelected={selectedCompanyIds.has(company.id)}
+                        onSelect={toggleSelection}
                         onFindContact={async (id) => {
                           await findContactMutation.mutateAsync(id);
-                        }}
-                        onGenerate={async (id) => {
-                          await generateMutation.mutateAsync(id);
                         }}
                         onReview={(id) => {
                           const comp = companies.find(c => c.id === id);
@@ -693,7 +582,10 @@ export default function Dashboard() {
                         }}
                         onSend={(id) => {
                           const comp = companies.find(c => c.id === id);
-                          if (comp) setSendingCompany(comp);
+                          if (comp) {
+                            setSendingCompany(comp);
+                            setSendDialogOpen(true);
+                          }
                         }}
                         onRetry={async (id) => {
                           await retryEmailMutation.mutateAsync(id);
@@ -705,7 +597,7 @@ export default function Dashboard() {
                     ))}
                   </div>
                 )}
-        </div>
+              </div>
             )}
 
             {!activeState && (
@@ -756,28 +648,94 @@ export default function Dashboard() {
         isOpen={!!reviewingCompany}
         onClose={() => setReviewingCompany(null)}
         company={reviewingCompany}
-        onSave={async (emailId, subject, body) => {
-          await saveReviewMutation.mutateAsync({ emailId, subject, body });
+        onSave={async (emailId, subject, body, recipientEmail) => {
+          await saveReviewMutation.mutateAsync({ emailId, subject, body, recipientEmail });
         }}
         onApprove={async (emailId, subject, body) => {
           await approveMutation.mutateAsync({ emailId, subject, body });
         }}
-      />
-
-      {/* Send Email Modal */}
-      <SendEmailModal
-        isOpen={!!sendingCompany}
-        onClose={() => setSendingCompany(null)}
-        company={sendingCompany}
-        onSend={async (emailId, recipientEmail, senderEmail) => {
+        onSend={async (emailId: string, recipientEmail: string, senderEmail: string, subject: string, body: string) => {
+          // First save any changes to the email
+          await saveReviewMutation.mutateAsync({ emailId, subject, body, recipientEmail });
+          // Then send the email
           await sendMutation.mutateAsync({ emailId, recipientEmail, senderEmail });
         }}
-        onDelete={sendingCompany?.id ? async (companyId) => {
-          await deleteEmailMutation.mutateAsync(companyId);
-        } : undefined}
-        onRegenerate={sendingCompany?.id ? async (companyId) => {
+        onRegenerate={async (companyId: string) => {
+          const wasApproved = reviewingCompany?.pipelineState === PIPELINE_STATES.APPROVED_TO_SEND;
           await regenerateEmailMutation.mutateAsync(companyId);
-        } : undefined}
+          // If regenerating from approved state, navigate to generated tab
+          if (wasApproved) {
+            setActiveState(PIPELINE_STATES.PENDING_REVIEW);
+          }
+        }}
+      />
+
+      {/* Send Confirmation Dialog */}
+      <SendConfirmationDialog
+        isOpen={sendDialogOpen}
+        onClose={() => {
+          setSendDialogOpen(false);
+          setSendingCompany(null);
+        }}
+        company={sendingCompany}
+        onConfirm={async (recipientEmail: string, senderEmail: string) => {
+          if (sendingCompany?.email) {
+            await sendMutation.mutateAsync({
+              emailId: sendingCompany.email.id,
+              recipientEmail,
+              senderEmail,
+            });
+            setSendDialogOpen(false);
+            setSendingCompany(null);
+          }
+        }}
+        isLoading={sendMutation.isPending}
+      />
+
+      {/* Batch Action Bar */}
+      <BatchActionBar
+        selectedCount={selectedCompanyIds.size}
+        totalCount={companies.length}
+        pipelineState={activeState}
+        onApprove={() => {
+          batchApproveMutation.mutate([...selectedCompanyIds]);
+        }}
+        onDelete={() => {
+          setDeleteTargetIds([...selectedCompanyIds]);
+          setDeleteDialogOpen(true);
+        }}
+        onSend={() => {
+          if (confirm(`${selectedCompanyIds.size} email göndermek istediğinize emin misiniz?`)) {
+            batchSendMutation.mutate([...selectedCompanyIds]);
+          }
+        }}
+        onRetry={() => {
+          batchRetryMutation.mutate([...selectedCompanyIds]);
+        }}
+        onClear={clearSelection}
+        isLoading={{
+          approve: batchApproveMutation.isPending,
+          delete: batchDeleteMutation.isPending,
+          send: batchSendMutation.isPending,
+          retry: batchRetryMutation.isPending,
+        }}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <DeleteConfirmationDialog
+        isOpen={deleteDialogOpen}
+        onClose={() => {
+          setDeleteDialogOpen(false);
+          setDeleteTargetIds([]);
+        }}
+        onConfirm={async (alsoDeleteFromFetched) => {
+          await batchDeleteMutation.mutateAsync({
+            companyIds: deleteTargetIds,
+            alsoDeleteFromFetched,
+          });
+        }}
+        count={deleteTargetIds.length}
+        isLoading={batchDeleteMutation.isPending}
       />
 
     </div>

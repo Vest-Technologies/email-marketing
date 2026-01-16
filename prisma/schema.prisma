@@ -137,3 +137,15 @@ model Settings {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// Track Apollo organizations that have been imported (for exclusion from future searches)
+model FetchedOrganization {
+  id        String   @id @default(cuid())
+  apolloId  String   @unique  // Apollo organization_id or account id
+  domain    String?           // For reference/additional matching
+  name      String?           // For reference
+  fetchedAt DateTime @default(now())
+
+  @@index([apolloId])
+  @@index([domain])
+}

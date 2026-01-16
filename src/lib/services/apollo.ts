@@ -250,7 +250,7 @@ export async function findPeopleByTitle(
 
   // Add person_titles as separate array items (reversed to prioritize English titles first)
   if (targetTitles.length > 0) {
-    queryParams['person_titles[]'] = [...targetTitles].reverse();
+    queryParams['person_titles[]'] = [...targetTitles];
   }
 
   console.log('[Apollo] Query params:', queryParams);

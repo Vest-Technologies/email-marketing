@@ -4,12 +4,12 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Building2,
   Globe,
   Users,
   MapPin,
-  Sparkles,
   Eye,
   Send,
   CheckCircle2,
@@ -45,21 +45,23 @@ interface CompanyCardProps {
       editedBody?: string | null;
       finalSubject?: string | null;
       finalBody?: string | null;
+      sentTo?: string | null;
     } | null;
   };
   onFindContact: (companyId: string) => Promise<void>;
-  onGenerate: (companyId: string) => Promise<void>;
   onReview: (companyId: string) => void;
   onApprove: (companyId: string) => Promise<void>;
   onSend: (companyId: string) => void;
   onRetry?: (companyId: string) => Promise<void>;
   onReset?: (companyId: string) => Promise<void>;
+  // Selection props
+  isSelected?: boolean;
+  onSelect?: (companyId: string) => void;
 }
 
 const stateLabels: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" }> = {
-  pending_generation: { label: "Pending", variant: "secondary" },
   email_not_generated: { label: "Not Generated", variant: "warning" },
-  pending_review: { label: "Review Needed", variant: "info" },
+  pending_review: { label: "Generated", variant: "info" },
   approved_to_send: { label: "Approved", variant: "success" },
   sent: { label: "Sent", variant: "default" },
 };
@@ -67,12 +69,13 @@ const stateLabels: Record<string, { label: string; variant: "default" | "seconda
 export function CompanyCard({
   company,
   onFindContact,
-  onGenerate,
   onReview,
   onApprove,
   onSend,
   onRetry,
-  onReset
+  onReset,
+  isSelected = false,
+  onSelect,
 }: CompanyCardProps) {
   const [isLoading, setIsLoading] = useState<string | null>(null);
 
@@ -96,9 +99,20 @@ export function CompanyCard({
     : null;
 
   return (
-    <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 hover:border-border">
+    <Card className={`group hover:shadow-lg transition-all duration-300 border-border/50 hover:border-border ${isSelected ? 'ring-2 ring-primary border-primary' : ''}`}>
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between gap-3">
+          {/* Checkbox - visible on hover or when selected */}
+          {onSelect && (
+            <div className={`flex-shrink-0 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => onSelect(company.id)}
+                onClick={(e) => e.stopPropagation()}
+                className="mt-1"
+              />
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <CardTitle className="text-lg font-semibold truncate flex items-center gap-2">
               <Building2 className="h-5 w-5 text-muted-foreground flex-shrink-0" />
@@ -149,12 +163,19 @@ export function CompanyCard({
             {company.targetContactTitle && (
               <div className="text-sm opacity-80">{company.targetContactTitle}</div>
             )}
-            {company.targetContactEmail && (
+            {/* For sent emails, show the actual sentTo address; otherwise show targetContactEmail */}
+            {company.pipelineState === "sent" && company.email?.sentTo ? (
+              <div className="text-sm flex items-center gap-1">
+                <Mail className="h-3 w-3" />
+                {company.email.sentTo}
+                <span className="text-xs opacity-60">(gönderildi)</span>
+              </div>
+            ) : company.targetContactEmail ? (
               <div className="text-sm flex items-center gap-1">
                 <Mail className="h-3 w-3" />
                 {company.targetContactEmail}
               </div>
-            )}
+            ) : null}
           </div>
         ) : (
           <div className="bg-muted/50 rounded-lg p-3 text-sm text-muted-foreground">
@@ -197,39 +218,6 @@ export function CompanyCard({
 
         {/* Actions */}
         <div className="flex flex-wrap gap-2 pt-2">
-          {/* Find Contact Button - first step */}
-          {company.pipelineState === "pending_generation" && !hasContact && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleAction("find", () => onFindContact(company.id))}
-              disabled={isLoading !== null}
-            >
-              {isLoading === "find" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <UserSearch className="h-4 w-4" />
-              )}
-              Kişi Bul
-            </Button>
-          )}
-
-          {/* Generate Button - after contact found */}
-          {company.pipelineState === "pending_generation" && hasContact && (
-            <Button
-              size="sm"
-              onClick={() => handleAction("generate", () => onGenerate(company.id))}
-              disabled={isLoading !== null}
-            >
-              {isLoading === "generate" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
-              )}
-              Email Oluştur
-            </Button>
-          )}
-
           {/* Review Button */}
           {company.pipelineState === "pending_review" && (
             <Button
@@ -259,15 +247,25 @@ export function CompanyCard({
             </Button>
           )}
 
-          {/* Send Button */}
+          {/* Review & Send Buttons for Approved */}
           {company.pipelineState === "approved_to_send" && (
-            <Button
-              size="sm"
-              onClick={() => onSend(company.id)}
-            >
-              <Send className="h-4 w-4" />
-              Gönder
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onReview(company.id)}
+              >
+                <Eye className="h-4 w-4" />
+                İncele
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => onSend(company.id)}
+              >
+                <Send className="h-4 w-4" />
+                Gönder
+              </Button>
+            </>
           )}
 
           {/* Not Generated Actions */}
