@@ -4,14 +4,16 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Mail, Loader2, Save, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Mail, Loader2, Save, AlertCircle, CheckCircle2, Eye, EyeOff, Code } from "lucide-react";
 
 interface Settings {
   id: string;
   senderEmail: string | null;
   senderName: string | null;
+  signature: string | null;
 }
 
 interface SettingsResponse {
@@ -26,7 +28,9 @@ export function EmailSettings() {
   const queryClient = useQueryClient();
   const [senderEmail, setSenderEmail] = useState("");
   const [senderName, setSenderName] = useState("");
+  const [signature, setSignature] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showSignaturePreview, setShowSignaturePreview] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery<SettingsResponse>({
     queryKey: ["settings"],
@@ -43,15 +47,16 @@ export function EmailSettings() {
     if (data?.settings) {
       setSenderEmail(data.settings.senderEmail || "");
       setSenderName(data.settings.senderName || "");
+      setSignature(data.settings.signature || "");
     }
   }, [data]);
 
   const saveMutation = useMutation({
-    mutationFn: async ({ senderEmail, senderName }: { senderEmail: string; senderName: string }) => {
+    mutationFn: async ({ senderEmail, senderName, signature }: { senderEmail: string; senderName: string; signature: string }) => {
       const res = await fetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ senderEmail: senderEmail || null, senderName: senderName || null }),
+        body: JSON.stringify({ senderEmail: senderEmail || null, senderName: senderName || null, signature: signature || null }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -67,12 +72,13 @@ export function EmailSettings() {
   });
 
   const handleSave = () => {
-    saveMutation.mutate({ senderEmail, senderName });
+    saveMutation.mutate({ senderEmail, senderName, signature });
   };
 
   const hasChanges = data?.settings && (
     senderEmail !== (data.settings.senderEmail || "") ||
-    senderName !== (data.settings.senderName || "")
+    senderName !== (data.settings.senderName || "") ||
+    signature !== (data.settings.signature || "")
   );
 
   const effectiveEmail = senderEmail || data?.userEmail || data?.envFallback?.senderEmail;
@@ -150,6 +156,60 @@ export function EmailSettings() {
               />
               <p className="text-xs text-muted-foreground">
                 Alicinin gorecegi isim. Ornegin: "BrandVox" &lt;noreply@brandvox.com&gt;
+              </p>
+            </div>
+
+            {/* Signature */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="signature" className="flex items-center gap-2">
+                  <Code className="h-4 w-4" />
+                  Email Imzasi - HTML (Opsiyonel)
+                </Label>
+                {signature && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowSignaturePreview(!showSignaturePreview)}
+                    className="h-8"
+                  >
+                    {showSignaturePreview ? (
+                      <>
+                        <EyeOff className="h-4 w-4 mr-1" />
+                        Kodu Goster
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="h-4 w-4 mr-1" />
+                        Onizleme
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
+
+              {showSignaturePreview && signature ? (
+                <div className="border rounded-lg p-4 bg-white min-h-[120px]">
+                  <p className="text-xs text-muted-foreground mb-2 border-b pb-2">Imza Onizlemesi:</p>
+                  <div
+                    className="prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: signature }}
+                  />
+                </div>
+              ) : (
+                <Textarea
+                  id="signature"
+                  value={signature}
+                  onChange={(e) => setSignature(e.target.value)}
+                  placeholder={`<p>Saygilar,<br><strong>Isim Soyisim</strong><br>Sirket Adi</p>`}
+                  rows={6}
+                  className="font-mono text-sm"
+                />
+              )}
+
+              <p className="text-xs text-muted-foreground">
+                HTML formatinda imza. Tum emaillerin sonuna eklenecek. Bos birakilirsa imza eklenmez.
               </p>
             </div>
 

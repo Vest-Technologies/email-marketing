@@ -46,7 +46,7 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { senderEmail, senderName } = body;
+    const { senderEmail, senderName, signature } = body;
 
     // Validate email if provided
     if (senderEmail) {
@@ -65,11 +65,13 @@ export async function PUT(request: NextRequest) {
       update: {
         senderEmail: senderEmail || null,
         senderName: senderName || null,
+        signature: signature !== undefined ? (signature || null) : undefined,
       },
       create: {
         id: 'default',
         senderEmail: senderEmail || null,
         senderName: senderName || null,
+        signature: signature || null,
       },
     });
 

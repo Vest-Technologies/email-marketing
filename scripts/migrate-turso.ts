@@ -24,6 +24,17 @@ async function migrate() {
 
   console.log('Settings table created/verified.');
 
+  // Add signature column to Settings if it doesn't exist
+  try {
+    await client.execute(`ALTER TABLE Settings ADD COLUMN signature TEXT`);
+    console.log('Signature column added to Settings table.');
+  } catch (error: any) {
+    // Column might already exist, which is fine
+    if (!error.message?.includes('duplicate column name')) {
+      console.log('Signature column already exists or error:', error.message);
+    }
+  }
+
   // Create FetchedOrganization table if it doesn't exist (for tracking imported Apollo organizations)
   await client.execute(`
     CREATE TABLE IF NOT EXISTS FetchedOrganization (

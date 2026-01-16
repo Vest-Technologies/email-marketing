@@ -32,25 +32,52 @@ function textToHtml(text: string): string {
 }
 
 /**
- * Get sender email from settings or environment variable
+ * Strip HTML tags for plain text version
  */
-async function getSenderEmail(): Promise<{ email: string | null; name: string | null }> {
+function stripHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * Get sender email and signature from settings or environment variable
+ */
+async function getSenderSettings(): Promise<{ email: string | null; name: string | null; signature: string | null }> {
   try {
     const settings = await prisma.settings.findUnique({
       where: { id: 'default' },
     });
 
     if (settings?.senderEmail) {
-      return { email: settings.senderEmail, name: settings.senderName };
+      return { email: settings.senderEmail, name: settings.senderName, signature: settings.signature };
+    }
+
+    // Return signature even if sender email is not set (will use env fallback for email)
+    if (settings?.signature) {
+      return {
+        email: process.env.FROM_EMAIL || process.env.AWS_SES_FROM_EMAIL || null,
+        name: null,
+        signature: settings.signature,
+      };
     }
   } catch (error) {
-    console.warn('[SES] Could not fetch sender email from settings, falling back to env:', error);
+    console.warn('[SES] Could not fetch sender settings, falling back to env:', error);
   }
 
   // Fallback to environment variable
   return {
     email: process.env.FROM_EMAIL || process.env.AWS_SES_FROM_EMAIL || null,
     name: null,
+    signature: null,
   };
 }
 
@@ -71,6 +98,9 @@ async function sendEmailViaProvider(
     };
   }
 
+  // Get sender settings (email, name, signature)
+  const senderSettings = await getSenderSettings();
+
   // Use custom sender email if provided, otherwise get from settings
   let fromEmail: string | null;
   let senderName: string | null = null;
@@ -78,9 +108,8 @@ async function sendEmailViaProvider(
   if (customSenderEmail) {
     fromEmail = customSenderEmail;
   } else {
-    const sender = await getSenderEmail();
-    fromEmail = sender.email;
-    senderName = sender.name;
+    fromEmail = senderSettings.email;
+    senderName = senderSettings.name;
   }
 
   if (!fromEmail) {
@@ -108,7 +137,14 @@ async function sendEmailViaProvider(
 
   try {
     // Convert plain text body to HTML
-    const htmlBody = textToHtml(body);
+    let htmlBody = textToHtml(body);
+    let plainTextBody = body;
+
+    // Append HTML signature if configured
+    if (senderSettings.signature) {
+      htmlBody = htmlBody + '<div style="margin-top:20px;">' + senderSettings.signature + '</div>';
+      plainTextBody = body + '\n\n' + stripHtml(senderSettings.signature);
+    }
 
     // Format source with display name if available
     const source = senderName ? `"${senderName}" <${fromEmail}>` : fromEmail;
@@ -130,7 +166,7 @@ async function sendEmailViaProvider(
             Charset: 'UTF-8',
           },
           Text: {
-            Data: body,
+            Data: plainTextBody,
             Charset: 'UTF-8',
           },
         },
