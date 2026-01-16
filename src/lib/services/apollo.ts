@@ -13,6 +13,7 @@ export interface ApolloFilters {
 
 export interface ApolloCompany {
   id: string;
+  organization_id?: string; // The organization ID needed for people search (different from account id)
   name: string;
   domain?: string;
   primary_domain?: string;
@@ -56,7 +57,7 @@ interface ApolloMatchResponse {
 }
 
 async function apolloRequest<T>(
-  endpoint: string, 
+  endpoint: string,
   body: Record<string, unknown>,
   queryParams?: Record<string, string | string[]>
 ): Promise<T> {
@@ -94,7 +95,7 @@ async function apolloRequest<T>(
     body: {
       ...body,
       // Truncate large arrays for logging
-      person_titles: body.person_titles && Array.isArray(body.person_titles) 
+      person_titles: body.person_titles && Array.isArray(body.person_titles)
         ? `${body.person_titles.length} titles (${body.person_titles.slice(0, 3).join(', ')}...)`
         : body.person_titles,
     },
@@ -119,7 +120,7 @@ async function apolloRequest<T>(
   }
 
   const data = await response.json();
-  
+
   // Log full response body
   console.log(`[Apollo] Response from ${endpoint}:`, JSON.stringify(data, null, 2));
 
@@ -136,13 +137,13 @@ export async function searchCompanies(
   perPage: number = 50
 ): Promise<{ companies: ApolloCompany[]; pagination: ApolloSearchResponse['pagination'] }> {
   // According to Apollo API docs and example:
-  // Filters go in query params, pagination in body
-  const body: Record<string, unknown> = {
-    page,
-    per_page: perPage,
-  };
+  // All parameters go in query params (including page and per_page)
+  const body: Record<string, unknown> = {};
 
-  const queryParams: Record<string, string | string[]> = {};
+  const queryParams: Record<string, string | string[]> = {
+    'page': String(page),
+    'per_page': String(perPage),
+  };
 
   // Filters in query params (as shown in example)
   if (filters.locations?.length) {
@@ -176,12 +177,14 @@ export async function searchCompanies(
   const accounts = response.accounts || [];
   const organizations = response.organizations || [];
   const allCompanies = [...accounts, ...organizations] as any[];
-  
+
   // Map to ApolloCompany format - use primary_domain if available, fallback to domain
+  // IMPORTANT: organization_id is needed for people search, id is the account ID
   const mappedCompanies: ApolloCompany[] = allCompanies.map((c: any) => ({
     id: c.id,
+    organization_id: c.organization_id || c.id, // organization_id for people search, fallback to id
     name: c.name,
-    domain: c.primary_domain || c.domain || undefined, // Use primary_domain first (from example response)
+    domain: c.primary_domain || c.domain || undefined,
     primary_domain: c.primary_domain || undefined,
     website_url: c.website_url || undefined,
     industry: c.industry || undefined,
@@ -190,7 +193,7 @@ export async function searchCompanies(
     country: c.country || undefined,
     employee_count: c.employee_count || c.organization_headcount || undefined,
   }));
-  
+
   // Remove duplicates by ID
   const uniqueCompanies = Array.from(
     new Map(mappedCompanies.map(c => [c.id, c])).values()
@@ -211,11 +214,11 @@ async function getTargetTitles(): Promise<string[]> {
     where: { isActive: true },
     orderBy: { priority: 'asc' },
   });
-  
+
   if (!titles || titles.length === 0) {
     throw new Error('No active target titles found in database. Please add titles in the UI.');
   }
-  
+
   return titles.map(t => t.title);
 }
 
@@ -235,33 +238,36 @@ export async function findPeopleByTitle(
   const targetTitles = titles || await getTargetTitles();
 
   // According to Apollo API docs: https://docs.apollo.io/reference/people-api-search
-  // Filters go in query params, pagination in body
-  // person_titles should be separate query params: person_titles[]=ceo&person_titles[]=manager
-  const body: Record<string, unknown> = {
-    page: 1,
-    per_page: 100, // Max per Apollo API docs
-  };
+  // All parameters go in query params (including page and per_page)
+  const body: Record<string, unknown> = {};
 
   const queryParams: Record<string, string | string[]> = {
-    'organization_ids[]': [organizationId], // Array of strings in query
+    'organization_ids[]': [organizationId],
+    'page': '1',
+    'per_page': '100',
+    'include_similar_titles': 'true',
   };
 
-  // Add person_titles as separate array items (each becomes a separate query param)
+  // Add person_titles as separate array items (reversed to prioritize English titles first)
   if (targetTitles.length > 0) {
-    queryParams['person_titles[]'] = targetTitles; // Array - will be expanded to multiple query params
+    queryParams['person_titles[]'] = [...targetTitles].reverse();
   }
+
+  console.log('[Apollo] Query params:', queryParams);
 
   const response = await apolloRequest<ApolloSearchResponse>('/mixed_people/api_search', body, queryParams);
   const people = response.people || [];
+
+  console.log(people);
 
   // Clean data - note: this endpoint doesn't return email addresses, only has_email flag
   // Use enrichPerson endpoint to get actual email
   return people.map((p: any) => ({
     id: p.id,
     first_name: p.first_name || undefined,
-    last_name: p.last_name || undefined, // May be obfuscated (last_name_obfuscated)
+    last_name: p.last_name || undefined,
     last_name_obfuscated: p.last_name_obfuscated || undefined,
-    email: p.email || undefined, // Usually not present in this endpoint
+    email: p.email || undefined,
     title: p.title || undefined,
     organization_id: p.organization?.id || p.organization_id || undefined,
     has_email: p.has_email || false,

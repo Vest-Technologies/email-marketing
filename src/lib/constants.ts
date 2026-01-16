@@ -215,7 +215,7 @@ OUTPUT FORMAT (return ONLY this JSON, nothing else):
 }`;
 
 // Apollo API configuration
-export const APOLLO_API_BASE_URL = 'https://api.apollo.io/v1';
+export const APOLLO_API_BASE_URL = 'https://api.apollo.io/api/v1';
 
 // Gemini model configuration
 export const GEMINI_MODEL = 'gemini-3-flash-preview';

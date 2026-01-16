@@ -22,33 +22,36 @@ export async function POST(request: NextRequest) {
     const importedCompanies = [];
 
     for (const company of companies) {
-      // Check if company already exists (by apolloId or domain)
+      // Check if company already exists (by apolloId/organization_id or domain)
+      const orgId = company.organization_id || company.id;
+      console.log(`[Import] Company: ${company.name}, id: ${company.id}, organization_id: ${company.organization_id}, using: ${orgId}`);
       const existing = await prisma.company.findFirst({
         where: {
           OR: [
-            { apolloId: company.id },
+            { apolloId: orgId },
             { domain: company.domain || '' },
           ],
         },
       });
 
       if (existing) {
-        // Update existing company to pending_generation if not already in that state
-        if (existing.pipelineState !== 'pending_generation') {
-          await prisma.company.update({
-            where: { id: existing.id },
-            data: { pipelineState: 'pending_generation' },
-          });
-          existing.pipelineState = 'pending_generation';
-        }
-        importedCompanies.push(existing);
+        // Update existing company - including apolloId in case it was wrong
+        const updated = await prisma.company.update({
+          where: { id: existing.id },
+          data: {
+            apolloId: orgId, // Update to correct organization_id
+            pipelineState: 'pending_generation',
+          },
+        });
+        importedCompanies.push(updated);
         continue;
       }
 
       // Create new company - NO employee data yet
+      // IMPORTANT: Use organization_id for people search, not the account id
       const newCompany = await prisma.company.create({
         data: {
-          apolloId: company.id,
+          apolloId: company.organization_id || company.id,
           name: company.name,
           domain: company.domain || '',
           website: company.website_url,
