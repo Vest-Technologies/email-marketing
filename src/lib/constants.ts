@@ -29,7 +29,7 @@ export const TARGET_TITLES = [
   'Owner',
   'Şirket Sahibi',
   'Patron',
-  
+
   // Marketing (Turkish first)
   'Pazarlama Genel Müdürü',
   'Pazarlama Direktörü',
@@ -46,7 +46,7 @@ export const TARGET_TITLES = [
   'VP Marketing',
   'Head of Marketing',
   'Marketing Director',
-  
+
   // Growth / Revenue (Turkish first)
   'Büyüme Direktörü',
   'Büyüme Müdürü',
@@ -62,7 +62,7 @@ export const TARGET_TITLES = [
   'Director of Growth',
   'CRO',
   'Chief Revenue Officer',
-  
+
   // Sales (Turkish first)
   'Satış Genel Müdürü',
   'Satış Direktörü',
@@ -74,7 +74,7 @@ export const TARGET_TITLES = [
   'VP Sales',
   'Head of Sales',
   'Sales Director',
-  
+
   // Product (Turkish first)
   'Ürün Direktörü',
   'Ürün Müdürü',
@@ -84,7 +84,7 @@ export const TARGET_TITLES = [
   'VP Product',
   'Head of Product',
   'Product Director',
-  
+
   // Tech (Turkish first)
   'Teknoloji Direktörü',
   'Teknoloji Müdürü',
@@ -99,14 +99,14 @@ export const TARGET_TITLES = [
   'Chief Technology Officer',
   'VP Engineering',
   'Engineering Director',
-  
+
   // Operations (Turkish first)
   'Operasyon Direktörü',
   'Operasyon Müdürü',
   'İşletme Direktörü',
   'COO',
   'Chief Operating Officer',
-  
+
   // Finance (Turkish first)
   'Finans Direktörü',
   'Mali İşler Müdürü',
@@ -218,4 +218,4 @@ OUTPUT FORMAT (return ONLY this JSON, nothing else):
 export const APOLLO_API_BASE_URL = 'https://api.apollo.io/api/v1';
 
 // Gemini model configuration
-export const GEMINI_MODEL = 'gemini-3-flash-preview';
+export const GEMINI_MODEL = 'gemini-3-pro-preview';

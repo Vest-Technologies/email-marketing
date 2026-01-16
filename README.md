@@ -37,7 +37,7 @@ Companies must have **25+ valid titles** to proceed with email generation.
 - User edits are respected verbatim
 
 ### 5. Gemini Email Generation
-- Uses Google Gemini 1.5 Flash for email generation
+- Uses Google Gemini 3 pro for email generation
 - Strict JSON output format: `{ "subject": string, "email_body": string }`
 - Validation ensures all required fields are present
 
