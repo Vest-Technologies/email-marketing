@@ -8,10 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Search, 
-  Building2, 
-  MapPin, 
+import {
+  Search,
+  Building2,
+  MapPin,
   Users,
   Globe,
   Loader2,
@@ -23,45 +23,39 @@ import {
   ChevronsLeft,
   ChevronsRight
 } from "lucide-react";
-
-interface ApolloCompany {
-  id: string;
-  name: string;
-  domain?: string;
-  website_url?: string;
-  industry?: string;
-  city?: string;
-  state?: string;
-  country?: string;
-  employee_count?: number;
-}
+import { useCompanySearchStore, ApolloCompany } from "@/store/company-search-store";
 
 interface CompanySearchProps {
   onImport: (companies: ApolloCompany[]) => Promise<void>;
 }
 
 export function CompanySearch({ onImport }: CompanySearchProps) {
-  const [isSearching, setIsSearching] = useState(false);
+  // Zustand store for persistent state
+  const {
+    filters,
+    setFilters,
+    currentPage,
+    setCurrentPage,
+    pagination,
+    selectedCompanies,
+    toggleCompany,
+    selectAll,
+    clearSelection,
+    isSearching,
+    setIsSearching,
+    error,
+    setError,
+    setSearchResults,
+    getDisplayableCompanies,
+    markCompaniesAsGenerated,
+    isHydrated,
+  } = useCompanySearchStore();
+
+  // Local transient state
   const [isImporting, setIsImporting] = useState(false);
-  const [companies, setCompanies] = useState<ApolloCompany[]>([]);
-  const [selectedCompanies, setSelectedCompanies] = useState<Set<string>>(new Set());
-  const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pagination, setPagination] = useState<{
-    total_entries?: number;
-    total_pages?: number;
-    page?: number;
-    per_page?: number;
-  } | null>(null);
-  
-  // Filter states
-  const [filters, setFilters] = useState({
-    locations: "",
-    employeeCountMin: "",
-    employeeCountMax: "",
-    industries: "",
-    keywords: "",
-  });
+
+  // Get displayable companies (filters out generated ones)
+  const displayableCompanies = getDisplayableCompanies();
 
   const handleSearch = async (page: number = 1) => {
     setIsSearching(true);
@@ -97,15 +91,13 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
       
       if (!response.ok) {
         setError(data.error || "Search failed");
-        setCompanies([]);
-        setPagination(null);
+        setSearchResults([], null);
         return;
       }
-      
-      setCompanies(data.companies || []);
-      setPagination(data.pagination || null);
+
+      setSearchResults(data.companies || [], data.pagination || null);
       setCurrentPage(data.pagination?.page || page);
-      setSelectedCompanies(new Set());
+      clearSelection();
     } catch (err) {
       console.error("Search failed:", err);
       setError("Network error - please try again");
@@ -121,32 +113,25 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
     handleSearch(newPage);
   };
 
-  const toggleCompany = (id: string) => {
-    const newSelected = new Set(selectedCompanies);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
-    }
-    setSelectedCompanies(newSelected);
-  };
-
   const toggleAll = () => {
-    if (selectedCompanies.size === companies.length) {
-      setSelectedCompanies(new Set());
+    if (selectedCompanies.size === displayableCompanies.length) {
+      clearSelection();
     } else {
-      setSelectedCompanies(new Set(companies.map(c => c.id)));
+      selectAll(displayableCompanies.map(c => c.id));
     }
   };
 
   const handleImport = async () => {
-    const selected = companies.filter(c => selectedCompanies.has(c.id));
+    const selected = displayableCompanies.filter(c => selectedCompanies.has(c.id));
     if (selected.length === 0) return;
-    
+
     setIsImporting(true);
     try {
+      // Track generated companies before import
+      const orgIds = selected.map(c => c.organization_id || c.id);
+      markCompaniesAsGenerated(orgIds);
+
       await onImport(selected);
-      setSelectedCompanies(new Set());
     } finally {
       setIsImporting(false);
     }
@@ -174,7 +159,7 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
               <Input
                 id="locations"
                 value={filters.locations}
-                onChange={(e) => setFilters({ ...filters, locations: e.target.value })}
+                onChange={(e) => setFilters({ locations: e.target.value })}
                 placeholder="e.g., Turkey, Istanbul"
               />
             </div>
@@ -185,7 +170,7 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
                 id="employeeMin"
                 type="number"
                 value={filters.employeeCountMin}
-                onChange={(e) => setFilters({ ...filters, employeeCountMin: e.target.value })}
+                onChange={(e) => setFilters({ employeeCountMin: e.target.value })}
                 placeholder="e.g., 50"
               />
             </div>
@@ -196,7 +181,7 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
                 id="employeeMax"
                 type="number"
                 value={filters.employeeCountMax}
-                onChange={(e) => setFilters({ ...filters, employeeCountMax: e.target.value })}
+                onChange={(e) => setFilters({ employeeCountMax: e.target.value })}
                 placeholder="e.g., 500"
               />
             </div>
@@ -206,7 +191,7 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
               <Input
                 id="industries"
                 value={filters.industries}
-                onChange={(e) => setFilters({ ...filters, industries: e.target.value })}
+                onChange={(e) => setFilters({ industries: e.target.value })}
                 placeholder="e.g., Technology, SaaS"
               />
             </div>
@@ -216,7 +201,7 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
               <Input
                 id="keywords"
                 value={filters.keywords}
-                onChange={(e) => setFilters({ ...filters, keywords: e.target.value })}
+                onChange={(e) => setFilters({ keywords: e.target.value })}
                 placeholder="e.g., AI, machine learning, automation"
               />
             </div>
@@ -241,14 +226,14 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
       </Card>
 
       {/* Results */}
-      {companies.length > 0 && (
+      {isHydrated && displayableCompanies.length > 0 && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <CardTitle className="text-lg">Search Results</CardTitle>
                 <Badge variant="secondary">
-                  {companies.length} of {pagination?.total_entries || companies.length} companies
+                  {displayableCompanies.length} of {pagination?.total_entries || displayableCompanies.length} companies
                 </Badge>
                 {pagination && pagination.total_pages && pagination.total_pages > 1 && (
                   <Badge variant="outline">
@@ -258,7 +243,7 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
               </div>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={toggleAll}>
-                  {selectedCompanies.size === companies.length ? "Deselect All" : "Select All"}
+                  {selectedCompanies.size === displayableCompanies.length ? "Deselect All" : "Select All"}
                 </Button>
                 <Button
                   size="sm"
@@ -278,7 +263,7 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
           <CardContent>
             <ScrollArea className="h-[400px]">
               <div className="space-y-2">
-                {companies.map((company) => (
+                {displayableCompanies.map((company) => (
                   <div
                     key={company.id}
                     className={`flex items-center gap-4 p-4 rounded-lg border transition-all cursor-pointer ${

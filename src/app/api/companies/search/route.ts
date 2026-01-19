@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchCompanies, type ApolloFilters } from '@/lib/services/apollo';
+import { searchCompanies, type ApolloFilters, type ApolloCompany } from '@/lib/services/apollo';
 import prisma from '@/lib/prisma';
 
 // POST /api/companies/search - Search companies via Apollo
@@ -26,11 +26,11 @@ export async function POST(request: NextRequest) {
     // Validate and clean filters - remove empty arrays and undefined values
     const apolloFilters: ApolloFilters = {
       locations: filters?.locations && filters.locations.length > 0 ? filters.locations : undefined,
-      employeeCountMin: filters?.employeeCountMin !== undefined && filters.employeeCountMin !== null 
-        ? Number(filters.employeeCountMin) 
+      employeeCountMin: filters?.employeeCountMin !== undefined && filters.employeeCountMin !== null
+        ? Number(filters.employeeCountMin)
         : undefined,
-      employeeCountMax: filters?.employeeCountMax !== undefined && filters.employeeCountMax !== null 
-        ? Number(filters.employeeCountMax) 
+      employeeCountMax: filters?.employeeCountMax !== undefined && filters.employeeCountMax !== null
+        ? Number(filters.employeeCountMax)
         : undefined,
       industries: filters?.industries && filters.industries.length > 0 ? filters.industries : undefined,
       keywords: filters?.keywords && filters.keywords.length > 0 ? filters.keywords : undefined,
@@ -39,25 +39,52 @@ export async function POST(request: NextRequest) {
     // Log processed filters
     console.log('[API] Processed Apollo filters:', JSON.stringify(apolloFilters, null, 2));
 
-    const result = await searchCompanies(apolloFilters, page, perPage);
-
-    // Get all fetched organization IDs for exclusion
+    // Get already fetched organization IDs
     const fetchedOrgs = await prisma.fetchedOrganization.findMany({
       select: { apolloId: true },
     });
-    const excludedIds = new Set(fetchedOrgs.map(o => o.apolloId));
+    const fetchedIds = new Set(fetchedOrgs.map(org => org.apolloId));
 
-    // Filter out already-fetched companies
-    const filteredCompanies = result.companies.filter(company => {
-      const orgId = company.organization_id || company.id;
-      return !excludedIds.has(orgId);
-    });
+    // Fetch companies and filter out already-fetched ones
+    // If all companies on current page are filtered, auto-advance to next page
+    let currentPage = page;
+    let filteredCompanies: ApolloCompany[] = [];
+    let pagination = null;
+    const maxPagesToTry = 10; // Limit to prevent infinite loops
+    let pagesTriedCount = 0;
 
-    // Note: pagination.total_entries from Apollo won't reflect our filtering
-    // since we filter after Apollo returns results
+    while (pagesTriedCount < maxPagesToTry) {
+      const result = await searchCompanies(apolloFilters, currentPage, perPage);
+      pagination = result.pagination;
+
+      // Filter out already-fetched companies
+      filteredCompanies = result.companies.filter(company => {
+        const orgId = company.organization_id || company.id;
+        return !fetchedIds.has(orgId);
+      });
+
+      // If we have companies after filtering, or no more pages, stop
+      if (filteredCompanies.length > 0 || !pagination || currentPage >= (pagination.total_pages || 1)) {
+        break;
+      }
+
+      // All companies on this page were already fetched, try next page
+      console.log(`[API] Page ${currentPage} had no new companies after filtering, trying page ${currentPage + 1}`);
+      currentPage++;
+      pagesTriedCount++;
+    }
+
+    // Adjust pagination to reflect the effective page we're returning
+    const adjustedPagination = pagination ? {
+      ...pagination,
+      page: currentPage,
+    } : null;
+
+    console.log(`[API] Returning ${filteredCompanies.length} companies from page ${currentPage}`);
+
     return NextResponse.json({
       companies: filteredCompanies,
-      pagination: result.pagination,
+      pagination: adjustedPagination,
     });
   } catch (error) {
     console.error('Error searching companies:', error);
