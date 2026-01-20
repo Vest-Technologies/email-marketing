@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { 
-  FileText, 
-  Save, 
+import {
+  FileText,
+  Save,
   RotateCcw,
   Loader2,
   Info
@@ -22,8 +22,8 @@ interface PromptEditorProps {
   description?: string;
 }
 
-export function PromptEditor({ 
-  initialPrompt, 
+export function PromptEditor({
+  initialPrompt,
   onSave,
   title = "Email Generation Prompt",
   description = "Customize the AI prompt used to generate emails. The company website content will be automatically appended."
@@ -31,6 +31,14 @@ export function PromptEditor({
   const [prompt, setPrompt] = useState(initialPrompt || DEFAULT_SYSTEM_PROMPT);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Sync prompt state when initialPrompt prop changes (e.g., after API data loads)
+  useEffect(() => {
+    if (initialPrompt) {
+      setPrompt(initialPrompt);
+      setHasChanges(false);
+    }
+  }, [initialPrompt]);
 
   const handleChange = (value: string) => {
     setPrompt(value);

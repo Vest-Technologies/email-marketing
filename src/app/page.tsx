@@ -97,6 +97,40 @@ export default function Dashboard() {
   const [reviewingCompany, setReviewingCompany] = useState<Company | null>(null);
   const [customPrompt, setCustomPrompt] = useState(DEFAULT_SYSTEM_PROMPT);
 
+  // Fetch active prompt from database
+  const { data: promptData, isLoading: isPromptLoading } = useQuery({
+    queryKey: ["active-prompt"],
+    queryFn: async () => {
+      const res = await fetch("/api/prompts/active");
+      if (!res.ok) throw new Error("Failed to fetch prompt");
+      return res.json();
+    },
+    staleTime: 0, // Always fetch fresh
+  });
+
+  // Update local state when prompt data is loaded
+  useEffect(() => {
+    if (promptData?.prompt?.content) {
+      setCustomPrompt(promptData.prompt.content);
+    }
+  }, [promptData]);
+
+  // Mutation to save prompt
+  const savePromptMutation = useMutation({
+    mutationFn: async (content: string) => {
+      const res = await fetch("/api/prompts/active", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) throw new Error("Failed to save prompt");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["active-prompt"] });
+    },
+  });
+
   // Selection state for batch operations
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<Set<string>>(new Set());
 
@@ -624,12 +658,21 @@ export default function Dashboard() {
 
           {/* Prompts Tab */}
           <TabsContent value="prompts" className="animate-fade-in">
-            <PromptEditor
-              initialPrompt={customPrompt}
-              onSave={async (prompt) => {
-                setCustomPrompt(prompt);
-              }}
-            />
+            {isPromptLoading ? (
+              <Card>
+                <CardContent className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </CardContent>
+              </Card>
+            ) : (
+              <PromptEditor
+                initialPrompt={customPrompt}
+                onSave={async (prompt) => {
+                  await savePromptMutation.mutateAsync(prompt);
+                  setCustomPrompt(prompt);
+                }}
+              />
+            )}
           </TabsContent>
 
           {/* Titles Tab */}
