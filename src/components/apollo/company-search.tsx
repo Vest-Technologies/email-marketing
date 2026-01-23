@@ -226,7 +226,7 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
       </Card>
 
       {/* Results */}
-      {isHydrated && displayableCompanies.length > 0 && (
+      {isHydrated && pagination && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -241,27 +241,40 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
                   </Badge>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={toggleAll}>
-                  {selectedCompanies.size === displayableCompanies.length ? "Deselect All" : "Select All"}
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleImport}
-                  disabled={selectedCompanies.size === 0 || isImporting}
-                >
-                  {isImporting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                  {isImporting ? "Generating..." : `Generate ${selectedCompanies.size} Selected`}
-                </Button>
-              </div>
+              {displayableCompanies.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={toggleAll}>
+                    {selectedCompanies.size === displayableCompanies.length ? "Deselect All" : "Select All"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleImport}
+                    disabled={selectedCompanies.size === 0 || isImporting}
+                  >
+                    {isImporting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                    {isImporting ? "Generating..." : `Generate ${selectedCompanies.size} Selected`}
+                  </Button>
+                </div>
+              )}
             </div>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[400px]">
+              {displayableCompanies.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center py-12">
+                  <CheckCircle2 className="h-12 w-12 text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">
+                    All companies on this page have already been imported.
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Use the pagination below to view other pages.
+                  </p>
+                </div>
+              ) : (
               <div className="space-y-2">
                 {displayableCompanies.map((company) => (
                   <div
@@ -318,10 +331,11 @@ export function CompanySearch({ onImport }: CompanySearchProps) {
                   </div>
                 ))}
               </div>
+              )}
             </ScrollArea>
             
             {/* Pagination Controls */}
-            {pagination && pagination.total_pages && pagination.total_pages > 1 && (
+            {pagination && (
               <div className="flex items-center justify-between mt-4 pt-4 border-t">
                 <div className="text-sm text-muted-foreground">
                   Showing page {pagination.page || currentPage} of {pagination.total_pages}
